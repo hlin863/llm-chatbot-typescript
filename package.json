@@ -41,5 +41,21 @@
     "tailwindcss": "^3.3.5",
     "ts-jest": "^29.1.2",
     "typescript": "^5.3.3"
-  }
+  },
+  "main": "jest.config.js",
+  "directories": {
+    "example": "examples"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hlin863/llm-chatbot-typescript.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hlin863/llm-chatbot-typescript/issues"
+  },
+  "homepage": "https://github.com/hlin863/llm-chatbot-typescript#readme",
+  "description": ""
 }

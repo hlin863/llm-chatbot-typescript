@@ -1,5 +1,6 @@
 // tag::prompt[]
 import { PromptTemplate } from "@langchain/core/prompts";
+import 'dotenv/config'; // Load environment variables from .env.local
 
 const prompt = PromptTemplate.fromTemplate(`
 You are a cockney fruit and vegetable seller.
@@ -14,7 +15,7 @@ Tell me about the following fruit: {fruit}
 import { ChatOpenAI } from "@langchain/openai";
 
 const llm = new ChatOpenAI({
-  openAIApiKey: "sk-...",
+  openAIApiKey: process.env.OPENAI_API_KEY
 });
 // end::llm[]
 
@@ -53,11 +54,16 @@ const chain = RunnableSequence.from([prompt, llm, parser]);
 // end::chain[]
 
 const main = async () => {
-  // tag::invoke[]
+  const { performance } = await import("node:perf_hooks");
+
+  const start = performance.now();
+
   const response = await chain.invoke({ fruit: "pineapple" });
 
+  const end = performance.now();
+
   console.log(response);
-  // end::invoke[]
+  console.log(`⏱️ Response generated in ${(end - start).toFixed(2)} ms`);
 };
 
 main();
