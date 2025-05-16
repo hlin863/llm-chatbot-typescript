@@ -38,3 +38,16 @@ export async function close(): Promise<void> {
     await graph.close();
   }
 }
+
+/**
+ * Executes a Cypher write query with optional parameters.
+ * @param cypher - The Cypher query string
+ * @param parameters - A key-value map of query parameters
+ */
+export async function write(
+  cypher: string,
+  parameters: Record<string, any> = {}
+) {
+  const db = await initGraph();
+  return db.query(cypher, parameters);
+}
