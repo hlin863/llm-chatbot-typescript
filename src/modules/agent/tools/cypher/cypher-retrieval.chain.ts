@@ -20,7 +20,7 @@ type CypherRetrievalThroughput = AgentToolInput & {
 
 // tag::recursive[]
 /**
- * Use database the schema to generate and subsequently validate
+ * Use database schema to generate and subsequently validate
  * a Cypher statement based on the user question
  *
  * @param {Neo4jGraph}        graph     The graph
@@ -33,19 +33,31 @@ export async function recursivelyEvaluate(
   llm: BaseLanguageModel,
   question: string
 ): Promise<string> {
-  // TODO: Create Cypher Generation Chain
-  // const generationChain = ...
-  // TODO: Create Cypher Evaluation Chain
-  // const evaluatorChain = ...
-  // TODO: Generate Initial cypher
-  // let cypher = ...
-  // TODO: Recursively evaluate the cypher until there are no errors
-  // tag::evaluatereturn[]
-  // Bug fix: GPT-4 is adamant that it should use id() regardless of
-  // the instructions in the prompt.  As a quick fix, replace it here
-  // cypher = cypher.replace(/\sid\(([^)]+)\)/g, " elementId($1)");
-  // return cypher;
-  // end::evaluatereturn[]
+  const generationChain = await initCypherGenerationChain(graph, llm);
+  const evaluatorChain = await initCypherEvaluationChain(llm);
+  let cypher = await generationChain.invoke(question);
+  let errors = ["N/A"];
+  let tries = 0;
+
+  while (tries < 5 && errors.length > 0) {
+    tries++;
+    try {
+      const evaluation = await evaluatorChain.invoke({
+        question,
+        schema: graph.getSchema(),
+        cypher,
+        errors,
+      });
+      errors = evaluation.errors;
+      cypher = evaluation.cypher;
+    } catch (e: unknown) {
+      // Handle evaluation errors if necessary
+    }
+  }
+
+  // Replace id() with elementId() as a quick fix
+  cypher = cypher.replace(/\sid\(([^)]+)\)/g, " elementId($1)");
+  return cypher;
 }
 // end::recursive[]
 
@@ -64,7 +76,28 @@ export async function getResults(
   llm: BaseLanguageModel,
   input: { question: string; cypher: string }
 ): Promise<any | undefined> {
-  // TODO: catch Cypher errors and pass to the Cypher evaluation chain
+  let results;
+  let retries = 0;
+  let cypher = input.cypher;
+  const evaluationChain = await initCypherEvaluationChain(llm);
+
+  while (results == undefined && retries < 5) {
+    try {
+      results = await graph.query(cypher);
+      return results;
+    } catch (e: any) {
+      retries++;
+      const evaluation = await evaluationChain.invoke({
+        cypher,
+        question: input.question,
+        schema: graph.getSchema(),
+        errors: [e.message],
+      });
+      cypher = evaluation.cypher;
+    }
+  }
+
+  return results;
 }
 // end::results[]
 
@@ -73,8 +106,54 @@ export default async function initCypherRetrievalChain(
   llm: BaseLanguageModel,
   graph: Neo4jGraph
 ) {
-  // TODO: initiate answer chain
-  // const answerGeneration = ...
-  // TODO: return RunnablePassthrough
+  const answerGeneration = await initGenerateAuthoritativeAnswerChain(llm);
+
+  return RunnablePassthrough.assign({
+    cypher: (input: { rephrasedQuestion: string }) =>
+      recursivelyEvaluate(graph, llm, input.rephrasedQuestion),
+  })
+    .assign({
+      results: (input: { cypher: string; question: string }) =>
+        getResults(graph, llm, input),
+    })
+    .assign({
+      ids: (input: Omit<CypherRetrievalThroughput, "ids">) =>
+        extractIds(input.results),
+      context: ({ results }: Omit<CypherRetrievalThroughput, "ids">) =>
+        Array.isArray(results) && results.length == 1
+          ? JSON.stringify(results[0])
+          : JSON.stringify(results),
+    })
+    .assign({
+      output: (input: CypherRetrievalThroughput) =>
+        answerGeneration.invoke({
+          question: input.rephrasedQuestion,
+          context: input.context,
+        }),
+    })
+    .assign({
+      responseId: async (
+        input: CypherRetrievalThroughput,
+        options?: {
+          config?: {
+            configurable?: {
+              sessionId?: string;
+            };
+          };
+        }
+      ) => {
+        const sessionId = options?.config?.configurable?.sessionId;
+        saveHistory(
+          sessionId,
+          "cypher",
+          input.input,
+          input.rephrasedQuestion,
+          input.output,
+          input.ids,
+          input.cypher
+        );
+      },
+    })
+    .pick("output");
 }
 // end::function[]
