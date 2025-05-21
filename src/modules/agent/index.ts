@@ -21,8 +21,8 @@ export async function call(input: string, sessionId: string): Promise<string> {
     }
   });
 
-  const graph = initGraph();
-  const agent = initAgent(llm, embeddings, graph);
+  const graph = await initGraph();
+  const agent = await initAgent(llm, embeddings, graph);
   const res = await agent.invoke({ input }, { configurable: { sessionId } });
   
   return res;
